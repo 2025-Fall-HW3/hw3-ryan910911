@@ -56,15 +56,25 @@ class EqualWeightPortfolio:
 
     def calculate_weights(self):
         # Get the assets by excluding the specified column
-        assets = df.columns[df.columns != self.exclude]
+        assets = df.columns[df.columns!= self.exclude]
         self.portfolio_weights = pd.DataFrame(index=df.index, columns=df.columns)
-
+        
         """
         TODO: Complete Task 1 Below
         """
-
+        # 1. 確定投資組合中的資產數量 (m)，即 11 個部門 ETF
+        # 排除 SPY 後的資產數量
+        self.portfolio_weights[self.exclude] = 0
+        m = len(assets) 
+        # 2. 計算每個資產的等權重：w_i = 1 / m
+        equal_weight = 1.0 / m
+        # 3. 將等權重分配給每個交易日的投資組合資產 (assets)。
+        # 由於權重self.portfolio_weights[self.exclude] = 0在整個回測期是固定的 1/11，我們可以直接設定整個時間序列的權重。
+        # 設置所有日期、所有「非 SPY 資產」的權重為 equal_weight。
+        #self.portfolio_weights[self.exclude] = 0
+        self.portfolio_weights[assets] = equal_weight
         """
-        TODO: Complete Task 1 Above
+        TODO: Complete Task 1 Abovesource venv/bin/activate
         """
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
@@ -113,7 +123,25 @@ class RiskParityPortfolio:
         """
         TODO: Complete Task 2 Below
         """
+        
+        for i in range(self.lookback + 1, len(df)):
+            # 取過去 lookback 天的報酬
+            R_n = df_returns[assets].iloc[i - self.lookback : i]
 
+            # 計算各資產的波動率（標準差）
+            vol = R_n.std()
+
+            # 避免除以 0
+            vol.replace(0, np.nan, inplace=True)
+
+            # 逆波動率權重
+            inv_vol = 1 / vol
+
+            # 正規化為權重
+            w = inv_vol / inv_vol.sum()
+
+            # 放進 dataframe
+            self.portfolio_weights.loc[df.index[i], assets] = w.values
 
 
         """
@@ -187,11 +215,17 @@ class MeanVariancePortfolio:
                 """
                 TODO: Complete Task 3 Below
                 """
+                # w: portfolio weights
+                w = model.addMVar(n, lb=0, ub=1, name="w")
 
-                # Sample Code: Initialize Decision w and the Objective
-                # NOTE: You can modify the following code
-                w = model.addMVar(n, name="w", ub=1)
-                model.setObjective(w.sum(), gp.GRB.MAXIMIZE)
+                # Objective: minimize (gamma/2 * w' Σ w - w' μ)
+                quad_term = (gamma / 2) * (w @ Sigma @ w)
+                linear_term = - (w @ mu)
+
+                model.setObjective(quad_term + linear_term, gp.GRB.MINIMIZE)
+
+                # Constraint: sum of weights = 1
+                model.addConstr(w.sum() == 1, name="budget")
 
                 """
                 TODO: Complete Task 3 Above
